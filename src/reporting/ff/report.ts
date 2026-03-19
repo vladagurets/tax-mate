@@ -101,7 +101,7 @@ async function runCli(): Promise<void> {
   const result = await generateFreedomFinanceReports({ year });
 
   console.log('------------');
-  console.log('Freedom24 reports generated');
+  console.log('FreedomFinance reports generated');
   console.log(`Year: ${result.year}`);
   console.log(`Input files: ${result.inputFiles.length}`);
   console.log(`Dividends output: ${result.dividendsOutputPath}`);

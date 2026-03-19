@@ -1,10 +1,17 @@
-# Freedom24 Tax Report Parser
+# FreedomFinance Tax Report Parser (IBKR soon)
 
-TypeScript utility for generating annual tax-oriented JSON reports from Freedom24 exports.
+TypeScript utility for generating annual tax-oriented JSON reports from FreedomFinance exports.
 
 It aggregates all reports from `./reports/input` and produces:
 - `dividends_YYYY.json`
 - `stocks_YYYY.json`
+
+## Purpose
+
+This helper is designed to organize your broker activity into a structured yearly view that can be used to prepare a tax declaration.
+
+Tax scope in the current release:
+- **UA only** (Ukrainian tax-reporting context with UAH conversions).
 
 ## What It Generates
 
@@ -26,6 +33,16 @@ For a selected year:
 
 Input directory:
 - `./reports/input/*.json`
+
+Input requirement (important):
+- Use **FreedomFinance Broker report** exports (not Custody report).
+- Export each account with the full available history (from account opening / first activity up to current export date).
+- The calculator relies on full history to build correct FIFO cost basis, including conversions, splits, transfers, and sell matching.
+- Partial-history exports can produce incorrect tax results.
+
+Broker support status:
+- Current release supports **FreedomFinance** only.
+- **IBKR** support is planned for future releases.
 
 Output directory:
 - `./reports/output/dividends_YYYY.json`

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { Currency } from '../../../utils/getUahRate';
 import { RateProvider } from '../../rates';
-import { IInventoryOperation, IOperation, IStocksReportInput, OperationType } from '../../types';
+import { IInventoryOperation, IOperation, IStocksReportInput, IWorthlessSecurity, OperationType } from '../../types';
 import { FreedomFinanceStocksReport } from '../stocks';
 
 class FixedRateProvider implements RateProvider {
@@ -332,6 +332,52 @@ describe('FreedomFinanceStocksReport', () => {
     expect(row.relatedBuyOperations[0].quantity).toBe(6);
     expect(row.relatedBuyOperations[0].amount).toBe(600);
     expect(row.profit).toBe(120);
+  });
+
+  it('realizes configured worthless securities as 100% loss on write-off date', async () => {
+    const worthlessSecurities: IWorthlessSecurity[] = [
+      {
+        ticker: 'FTCH.US',
+        date: '2025-12-31',
+        timestamp: '2025-12-31 23:59:59',
+      },
+    ];
+
+    const input: IStocksReportInput = {
+      operations: [
+        trade({
+          id: 'buy-ftch',
+          ticker: 'FTCH.US',
+          date: '2024-03-01',
+          timestamp: '2024-03-01 10:00:00',
+          type: OperationType.BUY,
+          amount: 100,
+          commissionAmount: 2,
+          quantity: 10,
+          price: 10,
+        }),
+      ],
+      inventoryOperations: [],
+      worthlessSecurities,
+    };
+
+    const report = await generateStocksReport(input, 2025, {
+      '2024-03-01': { USD: '40' },
+      '2025-12-31': { USD: '50' },
+    });
+
+    const row = report.breakdown['FTCH.US'][0];
+
+    expect(row.date).toBe('2025-12-31');
+    expect(row.quantity).toBe(10);
+    expect(row.amount).toBe(0);
+    expect(row.profit).toBe(-102);
+    expect(row.profitUAH).toBe(-4080);
+    expect(row.relatedBuyOperations).toHaveLength(1);
+    expect(row.relatedBuyOperations[0].amount).toBe(100);
+    expect(row.relatedBuyOperations[0].commissionAmount).toBe(2);
+    expect(report.totals.USD).toBe(-102);
+    expect(report.totals.UAH).toBe(-4080);
   });
 
   it('throws when split legs are unresolved', async () => {

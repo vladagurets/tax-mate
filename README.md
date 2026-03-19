@@ -28,6 +28,7 @@ For a selected year:
     - `out`
   - Ignores internal account transfer movements in merged-account mode.
   - Supports sell-before-buy (short-like) sequences and keeps attribution in sell year.
+  - Applies configured worthless-security write-offs as zero-proceeds synthetic sells (full basis loss realization).
 
 ## Input And Output
 
@@ -84,6 +85,20 @@ Generation fails with explicit errors on broken invariants, including:
 - impossible inventory mutation (for example, `out` exceeds inventory)
 - invalid or missing required input fields
 - unresolved open short lots after full ledger processing
+
+Current configured worthless-security write-offs:
+- `FTCH.US` on `2025-12-31`
+- `FTCHF.US` on `2025-12-31`
+- `FTCHQ.US` on `2025-12-31`
+- `FRC.US` on `2025-12-31`
+- `FRCB.US` on `2025-12-31`
+
+Environment configuration:
+- `FF_BANKRUPTCY_WRITE_OFF_TICKERS` - comma-separated tickers to write off
+- `FF_BANKRUPTCY_WRITE_OFF_YEAR` - write-off year (default: `2025`)
+- `FF_BANKRUPTCY_WRITE_OFF_DATE` - optional override (`YYYY-MM-DD`)
+- `FF_BANKRUPTCY_WRITE_OFF_TIMESTAMP` - optional override (`YYYY-MM-DD HH:mm:ss`)
+- The script auto-loads `.env` from project root.
 
 ## Development
 

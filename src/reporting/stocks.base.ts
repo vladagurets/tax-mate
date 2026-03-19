@@ -18,7 +18,8 @@ type StockEvent =
   | { kind: 'trade'; timestamp: string; id: string; operation: IOperation }
   | { kind: 'split'; timestamp: string; id: string; operation: IInventoryOperation }
   | { kind: 'conversion'; timestamp: string; id: string; operation: IInventoryOperation }
-  | { kind: 'out'; timestamp: string; id: string; operation: IInventoryOperation };
+  | { kind: 'out'; timestamp: string; id: string; operation: IInventoryOperation }
+  | { kind: 'worthless'; timestamp: string; id: string; ticker: string; date: string };
 
 interface LongLot {
   timestamp: string;
@@ -123,6 +124,11 @@ export abstract class BaseStocksReport implements IBaseReport<IStocksReportInput
         continue;
       }
 
+      if (event.kind === 'worthless') {
+        this.processWorthlessOperation(event, inventory, sellRecords, sellRecordById);
+        continue;
+      }
+
       this.processConversionOperation(event.operation, inventory, pendingConversionGroups);
     }
 
@@ -138,7 +144,7 @@ export abstract class BaseStocksReport implements IBaseReport<IStocksReportInput
    *
    * Sort order:
    * 1. `timestamp`
-   * 2. event kind priority (`conversion` -> `split` -> `out` -> `trade`)
+   * 2. event kind priority (`conversion` -> `split` -> `out` -> `trade` -> `worthless`)
    * 3. stable `id` tie-breaker
    *
    * This guarantees deterministic matching and mutation behavior.
@@ -164,11 +170,22 @@ export abstract class BaseStocksReport implements IBaseReport<IStocksReportInput
       });
     }
 
+    for (const worthlessSecurity of input.worthlessSecurities ?? []) {
+      events.push({
+        kind: 'worthless',
+        timestamp: worthlessSecurity.timestamp,
+        id: `worthless:${worthlessSecurity.ticker}:${worthlessSecurity.timestamp}`,
+        ticker: worthlessSecurity.ticker,
+        date: worthlessSecurity.date,
+      });
+    }
+
     const rank: Record<StockEvent['kind'], number> = {
       conversion: 0,
       split: 1,
       out: 2,
       trade: 3,
+      worthless: 4,
     };
 
     events.sort((a, b) => {
@@ -200,6 +217,30 @@ export abstract class BaseStocksReport implements IBaseReport<IStocksReportInput
     }
 
     this.processSellOperation(operation, inventory, sellRecords, sellRecordById);
+  }
+
+  private createWorthlessSellRecord(
+    event: Extract<StockEvent, { kind: 'worthless' }>,
+    currency: Currency
+  ): SellRecordInternal {
+    return {
+      id: `${event.id}:${currency}`,
+      operation: {
+        id: `${event.id}:${currency}`,
+        ticker: event.ticker,
+        date: event.date,
+        timestamp: event.timestamp,
+        type: OperationType.SELL,
+        currency,
+        amount: 0,
+        commissionCurrency: currency,
+        commissionAmount: 0,
+        quantity: 0,
+        price: 0,
+      },
+      relatedBuyOperationsRaw: [],
+      pendingShortQuantity: 0,
+    };
   }
 
   /**
@@ -364,6 +405,59 @@ export abstract class BaseStocksReport implements IBaseReport<IStocksReportInput
         `OUT operation cannot be applied for ${operation.ticker} on ${operation.timestamp}. ` +
         `Missing quantity: ${roundToTwoDecimals(quantityToMoveOut)}.`
       );
+    }
+  }
+
+  /**
+   * Applies a "worthless security" write-off event.
+   *
+   * The event realizes all open long lots for the ticker as zero-proceeds
+   * synthetic SELL operations at the configured date/time. This allows
+   * recognizing full basis loss for the selected tax year.
+   */
+  private processWorthlessOperation(
+    event: Extract<StockEvent, { kind: 'worthless' }>,
+    inventory: Map<string, TickerInventory>,
+    sellRecords: SellRecordInternal[],
+    sellRecordById: Map<string, SellRecordInternal>
+  ): void {
+    const tickerInventory = this.getTickerInventory(inventory, event.ticker);
+
+    if (tickerInventory.shortLots.length > 0) {
+      throw new Error(
+        `Worthless write-off cannot be applied for ${event.ticker} on ${event.timestamp} while short lots are open.`
+      );
+    }
+
+    if (tickerInventory.longLots.length === 0) {
+      return;
+    }
+
+    const sellRecordByCurrency = new Map<Currency, SellRecordInternal>();
+
+    while (tickerInventory.longLots.length > 0) {
+      const oldestLongLot = tickerInventory.longLots.shift() as LongLot;
+      const existingSellRecord = sellRecordByCurrency.get(oldestLongLot.currency);
+      const sellRecord = existingSellRecord ?? this.createWorthlessSellRecord(event, oldestLongLot.currency);
+
+      sellRecord.operation.quantity = roundToTwoDecimals(sellRecord.operation.quantity + oldestLongLot.quantity);
+      sellRecord.relatedBuyOperationsRaw.push({
+        date: oldestLongLot.date,
+        currency: oldestLongLot.currency,
+        amount: oldestLongLot.amount,
+        commissionCurrency: oldestLongLot.commissionCurrency,
+        commissionAmount: oldestLongLot.commissionAmount,
+        quantity: oldestLongLot.quantity,
+      });
+
+      if (!existingSellRecord) {
+        sellRecordByCurrency.set(oldestLongLot.currency, sellRecord);
+      }
+    }
+
+    for (const sellRecord of sellRecordByCurrency.values()) {
+      sellRecords.push(sellRecord);
+      sellRecordById.set(sellRecord.id, sellRecord);
     }
   }
 

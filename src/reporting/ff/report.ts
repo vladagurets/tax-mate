@@ -2,10 +2,13 @@ import fs from 'fs';
 import path from 'path';
 
 import { JSON_INDENT, INPUT_REPORTS_DIR, OUTPUT_REPORTS_DIR } from '../constants';
+import { loadDotEnvIfPresent } from '../loadDotEnv';
 import { RateProvider } from '../rates';
+import { IWorthlessSecurity } from '../types';
 import { FreedomFinanceDividendsReport } from './dividents';
 import { loadFreedomInputData } from './loadInputReports';
 import { FreedomFinanceStocksReport } from './stocks';
+import { getDefaultWorthlessSecurities } from './worthlessSecurities';
 
 export interface IGenerateFreedomFinanceReportsOptions {
   inputDir?: string;
@@ -13,6 +16,7 @@ export interface IGenerateFreedomFinanceReportsOptions {
   year?: number;
   now?: Date;
   rateProvider?: RateProvider;
+  worthlessSecurities?: IWorthlessSecurity[];
 }
 
 export interface IFreedomGenerationResult {
@@ -34,9 +38,12 @@ export interface IFreedomGenerationResult {
 export async function generateFreedomFinanceReports(
   options: IGenerateFreedomFinanceReportsOptions = {}
 ): Promise<IFreedomGenerationResult> {
+  loadDotEnvIfPresent();
+
   const inputDir = options.inputDir ?? INPUT_REPORTS_DIR;
   const outputDir = options.outputDir ?? OUTPUT_REPORTS_DIR;
   const year = options.year ?? (options.now ?? new Date()).getFullYear();
+  const worthlessSecurities = options.worthlessSecurities ?? getDefaultWorthlessSecurities();
 
   if (!Number.isInteger(year) || year < 1900 || year > 3000) {
     throw new Error(`Invalid year value: ${year}`);
@@ -53,6 +60,7 @@ export async function generateFreedomFinanceReports(
       {
         operations,
         inventoryOperations,
+        worthlessSecurities,
       },
       year
     ),

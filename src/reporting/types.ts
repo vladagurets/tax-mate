@@ -70,9 +70,16 @@ export interface IInventoryOperation {
   comment: string;
 }
 
+export interface IWorthlessSecurity {
+  ticker: string;
+  date: string;
+  timestamp: string;
+}
+
 export interface IStocksReportInput {
   operations: IOperation[];
   inventoryOperations: IInventoryOperation[];
+  worthlessSecurities?: IWorthlessSecurity[];
 }
 
 export interface IRelatedBuyOperation {

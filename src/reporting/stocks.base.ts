@@ -83,6 +83,14 @@ export abstract class BaseStocksReport implements IBaseReport<IStocksReportInput
 
   abstract generateReport(input: IStocksReportInput, year: number): Promise<IOperationsReportData>;
 
+  /**
+   * Processes all normalized stock events into an internal ledger and builds
+   * the final yearly sell-centric report.
+   *
+   * The method enforces event ordering, applies inventory mutations
+   * (split/conversion/out), resolves short-lot covers, validates invariants,
+   * and finally computes per-sell profit/loss in original currency and UAH.
+   */
   protected async processEvents(input: IStocksReportInput, year: number): Promise<void> {
     this.reportData = {
       breakdown: {},
@@ -125,6 +133,16 @@ export abstract class BaseStocksReport implements IBaseReport<IStocksReportInput
     console.log(`Processed ${sellRecords.length} SELL operations in unified ledger for ${year}`);
   }
 
+  /**
+   * Merges trades and inventory operations into one time-ordered stream.
+   *
+   * Sort order:
+   * 1. `timestamp`
+   * 2. event kind priority (`conversion` -> `split` -> `out` -> `trade`)
+   * 3. stable `id` tie-breaker
+   *
+   * This guarantees deterministic matching and mutation behavior.
+   */
   private buildSortedEvents(input: IStocksReportInput): StockEvent[] {
     const events: StockEvent[] = [];
 
@@ -184,6 +202,12 @@ export abstract class BaseStocksReport implements IBaseReport<IStocksReportInput
     this.processSellOperation(operation, inventory, sellRecords, sellRecordById);
   }
 
+  /**
+   * Applies a SELL operation against existing long lots (FIFO).
+   *
+   * If there are not enough long lots, the unmatched part becomes a short lot
+   * and is attached to this sell record for later BUY-cover matching.
+   */
   private processSellOperation(
     operation: IOperation,
     inventory: Map<string, TickerInventory>,
@@ -242,6 +266,13 @@ export abstract class BaseStocksReport implements IBaseReport<IStocksReportInput
     sellRecordById.set(sellRecord.id, sellRecord);
   }
 
+  /**
+   * Applies a BUY operation.
+   *
+   * BUY first closes open short lots in FIFO order and allocates proportional
+   * buy amount/commission to the originating sell records. Any remaining BUY
+   * quantity is stored as a new long lot.
+   */
   private processBuyOperation(
     operation: IOperation,
     inventory: Map<string, TickerInventory>,
@@ -299,6 +330,13 @@ export abstract class BaseStocksReport implements IBaseReport<IStocksReportInput
     }
   }
 
+  /**
+   * Applies an `out` inventory event by removing long lots in FIFO order.
+   *
+   * This operation does not create taxable sell rows. It only changes
+   * inventory state. If requested quantity exceeds available long inventory,
+   * processing fails.
+   */
   private processOutOperation(
     operation: IInventoryOperation,
     inventory: Map<string, TickerInventory>
@@ -329,6 +367,13 @@ export abstract class BaseStocksReport implements IBaseReport<IStocksReportInput
     }
   }
 
+  /**
+   * Collects split legs and applies split ratio to open lots once both legs
+   * are present.
+   *
+   * Ratio formula: `positiveQuantity / abs(negativeQuantity)`.
+   * Both long and short open quantities for the ticker are scaled.
+   */
   private processSplitOperation(
     operation: IInventoryOperation,
     inventory: Map<string, TickerInventory>,
@@ -369,6 +414,16 @@ export abstract class BaseStocksReport implements IBaseReport<IStocksReportInput
     pendingSplitGroups.delete(key);
   }
 
+  /**
+   * Collects conversion legs and migrates basis/quantity between tickers.
+   *
+   * For each matched from/to pair:
+   * - long lots are moved first, preserving basis
+   * - short lots are moved next, preserving sell linkage
+   * - conversion ratio is applied to moved quantities
+   *
+   * Processing fails if inventory is insufficient.
+   */
   private processConversionOperation(
     operation: IInventoryOperation,
     inventory: Map<string, TickerInventory>,
@@ -428,6 +483,12 @@ export abstract class BaseStocksReport implements IBaseReport<IStocksReportInput
     }
   }
 
+  /**
+   * Moves long lots from one ticker to another during conversion, preserving
+   * lot date, basis, and commission basis.
+   *
+   * @returns Remaining source quantity that could not be moved.
+   */
   private moveLongLotsBetweenTickers(
     inventory: Map<string, TickerInventory>,
     fromTicker: string,
@@ -472,6 +533,12 @@ export abstract class BaseStocksReport implements IBaseReport<IStocksReportInput
     return quantityToMove;
   }
 
+  /**
+   * Moves short lots from one ticker to another during conversion while
+   * preserving sell-record linkage.
+   *
+   * @returns Remaining source quantity that could not be moved.
+   */
   private moveShortLotsBetweenTickers(
     inventory: Map<string, TickerInventory>,
     fromTicker: string,
@@ -506,6 +573,16 @@ export abstract class BaseStocksReport implements IBaseReport<IStocksReportInput
     return quantityToMove;
   }
 
+  /**
+   * Converts resolved internal sell records into output report rows for a
+   * selected year.
+   *
+   * This step computes:
+   * - per-sell net amount
+   * - matched buy basis (incl. commissions)
+   * - profit/loss in trade currency and UAH
+   * - ticker and global totals
+   */
   private async buildReportFromSellRecords(sellRecords: SellRecordInternal[], year: number): Promise<void> {
     const sortedSellRecords = sellRecords
       .filter((record) => new Date(record.operation.date).getFullYear() === year)
@@ -599,6 +676,10 @@ export abstract class BaseStocksReport implements IBaseReport<IStocksReportInput
     }
   }
 
+  /**
+   * Updates global currency totals and per-ticker UAH totals from a finalized
+   * sell row.
+   */
   private updateTotals(operationReport: IOperationTotal, ticker: string, totalBuyAmountUAH: number): void {
     const currency = operationReport.currency;
 
@@ -626,6 +707,11 @@ export abstract class BaseStocksReport implements IBaseReport<IStocksReportInput
     tickerTotals.sellAmount = roundToTwoDecimals(tickerTotals.sellAmount + operationReport.amountUAH);
   }
 
+  /**
+   * Ensures all collected split and conversion groups were fully resolved.
+   *
+   * Throws an error with unresolved group details if any pending group remains.
+   */
   private assertPendingGroupsResolved(
     pendingSplitGroups: Map<string, PendingSplitGroup>,
     pendingConversionGroups: Map<string, PendingConversionGroup>
@@ -647,6 +733,12 @@ export abstract class BaseStocksReport implements IBaseReport<IStocksReportInput
     }
   }
 
+  /**
+   * Ensures there are no open short lots left after processing the full ledger.
+   *
+   * Open short lots imply incomplete data for sell-cover flow and would make
+   * annual P/L ambiguous, so processing fails.
+   */
   private assertNoOpenShortLots(inventory: Map<string, TickerInventory>): void {
     const unresolvedShorts: string[] = [];
 
@@ -692,6 +784,11 @@ export abstract class BaseStocksReport implements IBaseReport<IStocksReportInput
     return comment.replace(/\s+/g, ' ').trim();
   }
 
+  /**
+   * Converts an amount to UAH using the configured exchange-rate provider.
+   *
+   * @returns Tuple of `[amountInUAH, exchangeRate]`.
+   */
   private async convertToUAH(amount: number, currency: Currency, date: string): Promise<[number, string]> {
     const exchangeRateUAH = await this.rateProvider.getRate(date, currency);
     return [roundToTwoDecimals(amount * parseFloat(exchangeRateUAH)), exchangeRateUAH];

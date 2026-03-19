@@ -22,6 +22,15 @@ export interface IFreedomGenerationResult {
   stocksOutputPath: string;
 }
 
+/**
+ * End-to-end report generation pipeline for FreedomFinance data.
+ *
+ * Steps:
+ * 1. Resolve runtime options and validate year.
+ * 2. Load and normalize all input reports.
+ * 3. Build dividends and stocks reports in parallel.
+ * 4. Persist outputs to configured directory.
+ */
 export async function generateFreedomFinanceReports(
   options: IGenerateFreedomFinanceReportsOptions = {}
 ): Promise<IFreedomGenerationResult> {
@@ -65,6 +74,15 @@ export async function generateFreedomFinanceReports(
   };
 }
 
+/**
+ * Extracts `--year` from CLI args.
+ *
+ * Supported forms:
+ * - `--year 2026`
+ * - `--year=2026`
+ *
+ * Returns `undefined` when no year flag is provided.
+ */
 export function parseCliYearArg(argv: string[]): number | undefined {
   const yearFlag = '--year';
   const yearWithEquals = argv.find((arg) => arg.startsWith(`${yearFlag}=`));
@@ -87,6 +105,9 @@ export function parseCliYearArg(argv: string[]): number | undefined {
   return parseYearOrThrow(yearValue);
 }
 
+/**
+ * Parses and validates a year value from CLI input.
+ */
 function parseYearOrThrow(value: string): number {
   const parsed = Number(value);
   if (!Number.isInteger(parsed)) {
@@ -96,6 +117,9 @@ function parseYearOrThrow(value: string): number {
   return parsed;
 }
 
+/**
+ * CLI runner used when this module is executed directly.
+ */
 async function runCli(): Promise<void> {
   const year = parseCliYearArg(process.argv.slice(2));
   const result = await generateFreedomFinanceReports({ year });

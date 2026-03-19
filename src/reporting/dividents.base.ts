@@ -13,6 +13,11 @@ export abstract class BaseDividendsReport implements IBaseReport<IDividend[], ID
 
   abstract generateReport(dividends: IDividend[], year: number): Promise<IDividendsReportData>;
 
+  /**
+   * Aggregates yearly dividend entries by ticker and computes currency/UAH totals.
+   *
+   * Each entry is converted to UAH by its own operation date.
+   */
   protected async processDividends(dividends: IDividend[], year: number): Promise<void> {
     const filteredDividends = dividends
       .filter((div) => new Date(div.date).getFullYear() === year)

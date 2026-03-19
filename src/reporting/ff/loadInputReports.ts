@@ -12,6 +12,16 @@ export interface IFreedomInputData {
   inventoryOperations: IInventoryOperation[];
 }
 
+/**
+ * Loads and normalizes all FreedomFinance input report files from a directory.
+ *
+ * Normalization outputs:
+ * - dividends (`dividend` + `dividend_reverted`)
+ * - stock operations (`buy`/`sell`, excluding FX `instr_type=6`)
+ * - inventory operations (`split`, `conversion`, `out`)
+ *
+ * The resulting structure is ready for downstream ledger processing.
+ */
 export function loadFreedomInputData(inputDir: string): IFreedomInputData {
   if (!fs.existsSync(inputDir)) {
     throw new Error(`Input directory does not exist: ${inputDir}`);
@@ -131,6 +141,9 @@ export function loadFreedomInputData(inputDir: string): IFreedomInputData {
   };
 }
 
+/**
+ * Validates that a field is a non-empty string and returns it.
+ */
 function requiredString(value: unknown, filePath: string, fieldPath: string): string {
   if (typeof value !== 'string' || value.trim() === '') {
     throw new Error(`Invalid or missing ${fieldPath} in ${filePath}`);
@@ -139,6 +152,9 @@ function requiredString(value: unknown, filePath: string, fieldPath: string): st
   return value;
 }
 
+/**
+ * Validates and parses a numeric field that may be number or numeric string.
+ */
 function requiredNumber(value: unknown, filePath: string, fieldPath: string): number {
   if (typeof value === 'number' && Number.isFinite(value)) {
     return value;
@@ -154,6 +170,9 @@ function requiredNumber(value: unknown, filePath: string, fieldPath: string): nu
   throw new Error(`Invalid or missing ${fieldPath} in ${filePath}`);
 }
 
+/**
+ * Parses and validates supported currencies for the current implementation.
+ */
 function parseCurrency(value: string, filePath: string, fieldPath: string): Currency {
   if (value === Currency.USD || value === Currency.EUR || value === Currency.UAH) {
     return value;

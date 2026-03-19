@@ -9,7 +9,7 @@ export abstract class BaseDividendsReport implements IBaseReport<IDividend[], ID
     totals: {}
   };
 
-  protected constructor(private readonly rateProvider: RateProvider = new NbuRateProvider()) {}
+  public constructor(private readonly rateProvider: RateProvider = new NbuRateProvider()) {}
 
   abstract generateReport(dividends: IDividend[], year: number): Promise<IDividendsReportData>;
 

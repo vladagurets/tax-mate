@@ -79,7 +79,7 @@ export abstract class BaseStocksReport implements IBaseReport<IStocksReportInput
     tickerTotalsUAH: {},
   };
 
-  protected constructor(private readonly rateProvider: RateProvider = new NbuRateProvider()) {}
+  public constructor(private readonly rateProvider: RateProvider = new NbuRateProvider()) {}
 
   abstract generateReport(input: IStocksReportInput, year: number): Promise<IOperationsReportData>;
 
